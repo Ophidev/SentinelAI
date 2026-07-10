@@ -1,7 +1,7 @@
 # 🛡️ SentinelAI
 
 > **An AI-assisted guard that watches over your website's security.**
-> SentinelAI is a **MERN Stack** web application that scans public websites for common security misconfigurations, maps every finding to the **OWASP Top 10**, calculates a security score, and uses AI to explain what it found in plain English — not a pentest replacement, but an always-on first line of defense.
+> SentinelAI is a **MERN Stack** web application that scans public websites *and* their source code for common security misconfigurations, maps every finding to the **OWASP Top 10**, calculates a security score, and uses AI to explain what it found in plain English — not a pentest replacement, but an always-on first line of defense.
 
 ---
 
@@ -16,6 +16,8 @@
 - 🧯 **AI Guardrails:** Defends its own AI layer against OWASP's Top 10 for LLMs — sanitizes any externally-influenced text before it reaches a prompt (indirect prompt injection) and sanitizes AI output before it's stored or displayed (insecure output handling).
 - 📊 **Dashboard:** Account-wide stats — total projects, total scans, average score, high/critical count.
 - 🕓 **Scan History:** Full history of past scans per project, so score trends over time are visible.
+- 🧪 **Code Scanning (SAST-lite + SCA):** Point a project at its GitHub repo to scan the source directly — real dependency-vulnerability checking via the OSV.dev database (checks every `package.json` in the repo, not just the root one), hardcoded-secret detection, and exposed `.env` file detection. Results flow through the exact same scoring/OWASP/remediation/AI pipeline as a live website scan.
+- 🏷️ **Live Security Badges:** A public, no-auth SVG badge endpoint per project — embed a live, auto-updating security score directly in your own README, the same way a CI status badge works.
 
 ---
 
@@ -72,6 +74,8 @@ SentinelAI acts as an intelligent first line of defense for developers, students
 - 🎯 Deterministic, per-finding remediation steps, kept separate from AI-generated impact analysis so nothing is ever repeated.
 - 🤖 AI-generated, plain-English impact analysis with graceful fallback and prompt-injection/output-sanitization defenses.
 - 📊 Account-wide dashboard stats and per-project scan history.
+- 🧪 Two scan modes per project — a **website scan** (DAST-style, checks a live running app) and a **code scan** (SAST-lite secret scanning + real SCA dependency-vulnerability checking against a GitHub repo).
+- 🏷️ Public, embeddable security-score badges for both scan types.
 
 ---
 
@@ -81,10 +85,13 @@ SentinelAI acts as an intelligent first line of defense for developers, students
 graph TD
 A[User Interface 💻] -->|REST APIs| B[React + Vite Frontend]
 B -->|API Calls + JWT| C[Express Server ⚙️]
-C -->|SSRF Guard + HTTP Fetch| D[Scanner Engine 🔎]
+C -->|SSRF Guard + HTTP Fetch| D[Website Scanner 🔎]
+C -->|GitHub API + OSV.dev| H[Code Scanner 🧪]
 D -->|Findings| E[Scoring + OWASP + Remediation 📊]
+H -->|Findings| E
 E -->|Per-Issue-Type, Cached| F[AI Engine 🤖 - Impact Analysis Only]
 C -->|Reads/Writes| G[(MongoDB 🧩)]
+C -->|Public, No Auth| I[Badge Endpoint 🏷️]
 ```
 
 ---
@@ -96,11 +103,12 @@ SentinelAI/
 │
 ├── 📁 server/               # Node + Express + MongoDB
 │   ├── src/
-│   │   ├── controllers/     # authController, projectController, scanController, dashboardController
+│   │   ├── controllers/     # authController, projectController, scanController, dashboardController, badgeController
 │   │   ├── models/          # User, Project, Scan, AiExplanationCache
 │   │   ├── routes/
 │   │   ├── middleware/      # authMiddleware, scanRateLimiter
 │   │   ├── scanner/         # runScan.js + checks/*.js + owaspMap.js + remediationMap.js + scoring.js
+│   │   ├── codeScanner/     # runCodeScan.js + githubClient.js + checks/*.js (SAST-lite + SCA)
 │   │   ├── ai/              # AIProvider interface, gemini/fallback providers, cache, guardrails
 │   │   └── utils/           # generateToken, ssrfGuard
 │   └── server.js
@@ -110,7 +118,7 @@ SentinelAI/
 │   │   ├── pages/           # Login, Register, Dashboard, Scan, History, ...
 │   │   ├── context/         # AuthContext
 │   │   ├── routes/          # AppRouter, ProtectedRoute
-│   │   └── services/        # api.js + auth/projects/scans/dashboard.api.js
+│   │   └── services/        # api.js + auth/projects/scans/dashboard.api.js (scans.api.js covers both scan types)
 │   └── ...
 │
 ├── 📁 docs/                  # HLD.md, LLD.md
@@ -170,6 +178,8 @@ npm run dev
 - **OWASP Top 10 Mapping:** Every finding is deterministically mapped to an OWASP category — the AI never decides what counts as a vulnerability.
 - **AI Guardrails (OWASP Top 10 for LLMs):** Defends against indirect prompt injection (LLM01) and insecure output handling (LLM02) in its own AI layer.
 - **Rate Limiting:** Scan creation is rate-limited per user to prevent SentinelAI itself from being abused as a DoS proxy.
+- **Public Badge Endpoint, Minimal Exposure:** The badge route intentionally requires no auth (so it works embedded in a README), but only ever reveals a score number and a color — never finding details — and project IDs aren't realistically guessable.
+- **Real SCA, Not Just DAST:** Code scans check dependencies against the OSV.dev vulnerability database and flag hardcoded secrets — genuine static analysis, not just live-site header checks.
 
 ---
 
