@@ -1,9 +1,10 @@
 import Project from "../models/Project.js";
 import Scan from "../models/Scan.js";
 import runScan from "../scanner/runScan.js";
+import runCodeScan from "../codeScanner/runCodeScan.js";
 import { attachImpact, buildSummary } from "../ai/index.js";
 
-// Triggers a scan and returns the finished result in one request.
+// Triggers a WEBSITE scan and returns the finished result in one request.
 // A real scan only takes 1-3 seconds (one fetch + a few header checks), so
 // running it synchronously keeps this build simple and easy to explain.
 // (See Scan.js model comment: a background-job + polling version is the
@@ -25,6 +26,7 @@ export const createScan = async (req, res) => {
       // worth recording — it's useful history ("last 3 scans all failed").
       const failedScan = await Scan.create({
         project: project._id,
+        type: "website",
         status: "failed",
         error: scanError.message,
       });
@@ -44,6 +46,60 @@ export const createScan = async (req, res) => {
 
     const scan = await Scan.create({
       project: project._id,
+      type: "website",
+      status: "completed",
+      score,
+      severityCounts,
+      findings: findingsWithImpact,
+      aiExplanation,
+    });
+
+    res.status(201).json({ success: true, scan });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+};
+
+// Triggers a CODE scan (SAST-lite + SCA against a GitHub repo). Mirrors
+// createScan above almost exactly — same synchronous-request pattern, same
+// AI impact-attachment step, same Scan model — the only real difference is
+// which scanner runs (runCodeScan vs runScan) and which project field it
+// reads (repoUrl vs url).
+export const createCodeScan = async (req, res) => {
+  try {
+    const project = await Project.findOne({ _id: req.params.projectId, owner: req.user._id });
+
+    if (!project) {
+      return res.status(404).json({ success: false, message: "Project not found" });
+    }
+
+    if (!project.repoUrl) {
+      return res
+        .status(400)
+        .json({ success: false, message: "This project has no repoUrl set — add one before running a code scan" });
+    }
+
+    let scanResult;
+    try {
+      scanResult = await runCodeScan(project.repoUrl);
+    } catch (scanError) {
+      const failedScan = await Scan.create({
+        project: project._id,
+        type: "code",
+        status: "failed",
+        error: scanError.message,
+      });
+      return res.status(200).json({ success: true, scan: failedScan });
+    }
+
+    const { score, severityCounts, findings } = scanResult;
+    const findingsWithImpact = await attachImpact(findings);
+    const aiExplanation = buildSummary(findings.length, score);
+
+    const scan = await Scan.create({
+      project: project._id,
+      type: "code",
       status: "completed",
       score,
       severityCounts,
@@ -59,6 +115,11 @@ export const createScan = async (req, res) => {
 };
 
 // Lists all past scans for a project, newest first — powers the History view.
+// `?type=code` returns code scans instead of website scans (default).
+// Uses `type: { $ne: "code" }` rather than `type: "website"` for the
+// default case so scans created BEFORE this field existed (which have no
+// `type` stored at all) still show up as website scans instead of vanishing
+// from history.
 export const getScansForProject = async (req, res) => {
   try {
     const project = await Project.findOne({ _id: req.params.projectId, owner: req.user._id });
@@ -67,7 +128,9 @@ export const getScansForProject = async (req, res) => {
       return res.status(404).json({ success: false, message: "Project not found" });
     }
 
-    const scans = await Scan.find({ project: project._id }).sort({ createdAt: -1 });
+    const typeFilter = req.query.type === "code" ? { type: "code" } : { type: { $ne: "code" } };
+
+    const scans = await Scan.find({ project: project._id, ...typeFilter }).sort({ createdAt: -1 });
 
     res.status(200).json({ success: true, scans });
   } catch (error) {

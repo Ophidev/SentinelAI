@@ -2,6 +2,7 @@ import authRoutes from "./routes/authRoutes.js";
 import projectRoutes from "./routes/projectRoutes.js";
 import scanRoutes from "./routes/scanRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
+import badgeRoutes from "./routes/badgeRoutes.js";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -20,6 +21,8 @@ app.use("/api/projects", projectRoutes);
 // so it's mounted at /api directly rather than nested under one fixed prefix.
 app.use("/api", scanRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+// Deliberately mounted with NO auth middleware — see badgeController.js.
+app.use("/api", badgeRoutes);
 
 // Health Check Route
 app.get("/", (req, res) => {

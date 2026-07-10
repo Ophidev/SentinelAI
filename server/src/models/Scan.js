@@ -31,6 +31,16 @@ const scanSchema = new mongoose.Schema(
       index: true,
     },
 
+    // "website" = the existing DAST-style scan (scanner/). "code" = the
+    // new SAST-lite + SCA scan against a GitHub repo (codeScanner/).
+    // Both produce findings in the exact same shape, so this field is the
+    // ONLY thing that distinguishes them at the data level.
+    type: {
+      type: String,
+      enum: ["website", "code"],
+      default: "website",
+    },
+
     status: {
       type: String,
       enum: ["completed", "failed"],
