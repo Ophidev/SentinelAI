@@ -1,7 +1,7 @@
 import Project from "../models/Project.js";
 import Scan from "../models/Scan.js";
 import runScan from "../scanner/runScan.js";
-import generateExplanation from "../ai/index.js";
+import { attachImpact, buildSummary } from "../ai/index.js";
 
 // Triggers a scan and returns the finished result in one request.
 // A real scan only takes 1-3 seconds (one fetch + a few header checks), so
@@ -33,15 +33,21 @@ export const createScan = async (req, res) => {
 
     const { score, severityCounts, findings } = scanResult;
 
-    // AI call happens ONCE, after scoring is already final — see ai/index.js.
-    const aiExplanation = await generateExplanation(findings, { score, severityCounts });
+    // Attaches `impact` directly onto each finding (alongside the
+    // `remediation` scoring.js already attached) — see ai/index.js for why
+    // this replaced building one big separate markdown blob.
+    const findingsWithImpact = await attachImpact(findings);
+
+    // A short, one-line summary — no per-finding detail repeated here,
+    // since that all now lives on each finding itself.
+    const aiExplanation = buildSummary(findings.length, score);
 
     const scan = await Scan.create({
       project: project._id,
       status: "completed",
       score,
       severityCounts,
-      findings,
+      findings: findingsWithImpact,
       aiExplanation,
     });
 

@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { Card, CardBody } from "../../components/ui/Card";
+import Input from "../../components/ui/Input";
+import Label from "../../components/ui/Label";
+import Button from "../../components/ui/Button";
 
 function Register() {
   const [name, setName] = useState("");
@@ -28,52 +32,67 @@ function Register() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-950 text-gray-100">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm bg-gray-900 p-8 rounded-lg space-y-4">
-        <h1 className="text-2xl font-bold">Create your SentinelAI account</h1>
+    <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-100 px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 text-center">
+          <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600/15 text-indigo-400 text-xl">
+            🛡️
+          </div>
+          <h1 className="text-xl font-semibold">Create your SentinelAI account</h1>
+          <p className="mt-1 text-sm text-zinc-500">Start scanning your websites in minutes</p>
+        </div>
 
-        {error && <p className="text-red-400 text-sm">{error}</p>}
+        <Card>
+          <CardBody>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <p className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+                  {error}
+                </p>
+              )}
 
-        <input
-          type="text"
-          placeholder="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-          className="w-full px-3 py-2 rounded bg-gray-800 border border-gray-700"
-        />
+              <div>
+                <Label htmlFor="name">Name</Label>
+                <Input id="name" type="text" value={name} onChange={(e) => setName(e.target.value)} required />
+              </div>
 
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          className="w-full px-3 py-2 rounded bg-gray-800 border border-gray-700"
-        />
+              <div>
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
 
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          minLength={6}
-          className="w-full px-3 py-2 rounded bg-gray-800 border border-gray-700"
-        />
+              <div>
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                />
+              </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-2 rounded bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loading ? "Creating account..." : "Register"}
-        </button>
+              <Button type="submit" disabled={loading} className="w-full">
+                {loading ? "Creating account..." : "Create account"}
+              </Button>
+            </form>
+          </CardBody>
+        </Card>
 
-        <p className="text-sm text-gray-400">
-          Already have an account? <Link to="/login" className="text-blue-400">Login</Link>
+        <p className="mt-4 text-center text-sm text-zinc-500">
+          Already have an account?{" "}
+          <Link to="/login" className="text-indigo-400 hover:text-indigo-300">
+            Login
+          </Link>
         </p>
-      </form>
+      </div>
     </div>
   );
 }
