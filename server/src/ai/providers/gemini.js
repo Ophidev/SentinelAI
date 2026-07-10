@@ -79,6 +79,17 @@ export default class GeminiProvider extends AIProvider {
 // worth of findings, and NOT this specific scan's raw evidence. Small
 // input = fewer input tokens, and because this result gets cached by
 // checkId (see ai/index.js), most scans never call this function at all.
+//
+// IMPORTANT: this prompt deliberately does NOT ask for a fix/remediation
+// step anymore. The exact fix is looked up deterministically in
+// scanner/remediationMap.js (see scoring.js, where it gets attached to
+// every finding) — asking the AI for it too would mean two different fixes
+// could show up for the same issue, and it would let the model freely
+// invent exact configuration syntax, which is exactly the kind of thing
+// that should stay in code we wrote and can review, not something a
+// probabilistic model generates fresh each time. The AI's ONLY job here is
+// to add something the findings list and the remediation table do NOT
+// already say: the real-world impact if this is left unfixed.
 function buildPrompt(check) {
   // check.title and check.description are text WE wrote ourselves in
   // scanner/checks/*.js — not attacker-controlled today. We still run them
@@ -98,9 +109,12 @@ function buildPrompt(check) {
   // our own deterministic code (see scanner/checks/*.js), never through
   // the AI at all.
   return (
-    "Explain this website security finding to a junior developer, in plain English, " +
-    "in 2-3 short sentences. Then add one line starting with 'Fix:' giving a concrete fix. " +
-    "Do not invent extra findings — only explain the one below.\n\n" +
+    "A website scan found the security issue described below. The user will ALREADY see " +
+    "the issue's technical description and an exact fix elsewhere on the page — do not repeat " +
+    "either of those. Your only job is to write 1-2 short sentences, in plain English for a " +
+    "junior developer, describing a REALISTIC scenario of what an attacker could actually do " +
+    "with this specific weakness. Be concrete, not generic. Do not include a fix or remediation " +
+    "step — that is handled separately. Do not invent extra findings — only address the one below.\n\n" +
     `Issue: ${safeTitle}\n` +
     `Severity: ${check.severity}\n` +
     `OWASP category: ${check.owasp}\n` +

@@ -11,6 +11,9 @@ const findingSchema = new mongoose.Schema(
     severity: { type: String, enum: ["critical", "high", "medium", "low", "info"] },
     owasp: String,
     evidence: String,
+    // Concrete fix text, looked up deterministically in scanner/remediationMap.js
+    // — never AI-generated, so it's always correct and always present.
+    remediation: String,
   },
   { _id: false } // findings are embedded, they don't need their own id
 );

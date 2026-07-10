@@ -10,8 +10,9 @@
 - 📁 **Project Management:** Create and track multiple websites to scan, each owned and scoped per user.
 - 🔎 **Security Scanner:** Checks HTTP security headers, HTTPS usage, cookie flags (`Secure`/`HttpOnly`/`SameSite`), and CORS misconfiguration — mapped to OWASP Top 10 categories with a calculated 0–100 score.
 - 🛑 **SSRF Protection:** Every scan target is DNS-resolved and rejected if it points at localhost/private/internal infrastructure before any request is made.
-- 🤖 **AI Explanations:** Findings are explained in plain English via Google Gemini, with a template-based fallback so the app never breaks if the AI provider is unavailable.
-- 💰 **Token-Saving AI Cache:** AI explanations are cached per issue-type in MongoDB — after the first scan of any given issue, future scans reuse the cached explanation instead of calling the AI again.
+- 🎯 **Deterministic Remediation:** Every finding gets an exact, hand-written fix looked up from a checkId-based table — never AI-generated, so the fix is always correct and always present, even if the AI provider is down.
+- 🤖 **AI Impact Analysis:** Rather than repeating what the findings list already shows, the AI's only job is explaining a realistic attack scenario for each issue — a genuinely separate piece of information, not a restatement.
+- 💰 **Token-Saving AI Cache:** AI impact explanations are cached per issue-type in MongoDB — after the first scan of any given issue, future scans reuse the cached text instead of calling the AI again.
 - 🧯 **AI Guardrails:** Defends its own AI layer against OWASP's Top 10 for LLMs — sanitizes any externally-influenced text before it reaches a prompt (indirect prompt injection) and sanitizes AI output before it's stored or displayed (insecure output handling).
 - 📊 **Dashboard:** Account-wide stats — total projects, total scans, average score, high/critical count.
 - 🕓 **Scan History:** Full history of past scans per project, so score trends over time are visible.
@@ -68,7 +69,8 @@ SentinelAI acts as an intelligent first line of defense for developers, students
 - 📁 Multi-project support — track several websites, each with its own scan history.
 - 🔎 OWASP Top 10-mapped security findings with a calculated severity score.
 - 🛑 SSRF-guarded scanning — refuses to scan private/internal targets.
-- 🤖 AI-generated, plain-English explanations with graceful fallback and prompt-injection/output-sanitization defenses.
+- 🎯 Deterministic, per-finding remediation steps, kept separate from AI-generated impact analysis so nothing is ever repeated.
+- 🤖 AI-generated, plain-English impact analysis with graceful fallback and prompt-injection/output-sanitization defenses.
 - 📊 Account-wide dashboard stats and per-project scan history.
 
 ---
@@ -80,8 +82,8 @@ graph TD
 A[User Interface 💻] -->|REST APIs| B[React + Vite Frontend]
 B -->|API Calls + JWT| C[Express Server ⚙️]
 C -->|SSRF Guard + HTTP Fetch| D[Scanner Engine 🔎]
-D -->|Findings| E[Scoring + OWASP Mapping 📊]
-E -->|Per-Issue-Type, Cached| F[AI Engine 🤖 - Gemini + Fallback]
+D -->|Findings| E[Scoring + OWASP + Remediation 📊]
+E -->|Per-Issue-Type, Cached| F[AI Engine 🤖 - Impact Analysis Only]
 C -->|Reads/Writes| G[(MongoDB 🧩)]
 ```
 
@@ -98,7 +100,7 @@ SentinelAI/
 │   │   ├── models/          # User, Project, Scan, AiExplanationCache
 │   │   ├── routes/
 │   │   ├── middleware/      # authMiddleware, scanRateLimiter
-│   │   ├── scanner/         # runScan.js + checks/*.js + owaspMap.js + scoring.js
+│   │   ├── scanner/         # runScan.js + checks/*.js + owaspMap.js + remediationMap.js + scoring.js
 │   │   ├── ai/              # AIProvider interface, gemini/fallback providers, cache, guardrails
 │   │   └── utils/           # generateToken, ssrfGuard
 │   └── server.js

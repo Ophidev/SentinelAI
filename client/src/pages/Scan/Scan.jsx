@@ -78,12 +78,22 @@ function Scan() {
                   </p>
                   <p className="text-sm text-gray-400">{finding.owasp}</p>
                   <p className="text-sm mt-1">{finding.description}</p>
+                  {/* remediation is looked up deterministically on the backend
+                      (scanner/remediationMap.js) — always present even if the
+                      AI explanation below fails, so a fix is never missing. */}
+                  <p className="text-sm mt-2 text-green-400">
+                    <span className="font-semibold">Recommended fix:</span> {finding.remediation}
+                  </p>
                 </div>
               ))}
             </div>
 
             <div className="bg-gray-900 p-4 rounded-lg">
-              <h2 className="font-semibold mb-2">AI Explanation</h2>
+              <h2 className="font-semibold mb-2">AI Impact Analysis</h2>
+              <p className="text-xs text-gray-500 mb-2">
+                Explains realistic attack scenarios for each issue above — fixes are already listed
+                per-finding, so this section deliberately doesn't repeat them.
+              </p>
               {/* aiExplanation is markdown text from server/src/ai — rendered
                   as plain text here to keep this build simple; a markdown
                   renderer (e.g. react-markdown) would be the next upgrade. */}

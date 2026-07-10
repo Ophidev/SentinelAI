@@ -17,9 +17,15 @@ const geminiProvider = new GeminiProvider();
 const fallbackProvider = new FallbackProvider();
 
 /**
- * Returns the explanation for ONE finding type (checkId), using the cache
- * whenever possible. This is the whole "save AI tokens" trick:
+ * Returns the AI-generated IMPACT statement for ONE finding type (checkId),
+ * using the cache whenever possible. This text answers ONE question only:
+ * "what could actually happen if this is left unfixed?" — not "what is
+ * this?" (already shown via the finding's own title/description) and not
+ * "how do I fix it?" (looked up deterministically in remediationMap.js,
+ * see scoring.js). Splitting it this way means the AI call only ever
+ * produces information the user doesn't already have elsewhere on the page.
  *
+ * The cache trick itself is unchanged:
  *   1. Look up this checkId in the database first.
  *   2. If found -> return it immediately. No AI call, no tokens spent.
  *   3. If NOT found -> ask Gemini once, save the answer, then return it.
@@ -44,18 +50,18 @@ async function explainOneCheck(check) {
 
   console.log(`[AI cache] MISS for "${check.checkId}" — calling AI provider`);
 
-  let explanation;
+  let impactText;
   try {
     // Try the real provider first. If GEMINI_API_KEY is missing, or the
     // API call fails/times out/hits a quota limit, this throws and we
     // fall into the catch block below instead of crashing the scan.
-    explanation = await geminiProvider.explainCheck(check);
+    impactText = await geminiProvider.explainCheck(check);
   } catch (error) {
     console.warn(`AI provider failed for "${check.checkId}", using fallback:`, error.message);
     // The fallback provider needs no API key and cannot fail — it always
-    // returns a usable string, so `explanation` is guaranteed to be set
-    // by the time we reach the line below.
-    explanation = await fallbackProvider.explainCheck(check);
+    // returns a usable string, so `impactText` is guaranteed to be set by
+    // the time we reach the line below.
+    impactText = await fallbackProvider.explainCheck(check);
   }
 
   // Whichever provider produced this text — real AI or our own template —
@@ -63,19 +69,21 @@ async function explainOneCheck(check) {
   // to store it. This is intentional: even our OWN fallback text is run
   // through this, so there is exactly one code path that decides "is this
   // safe to cache/display", not two slightly-different ones per provider.
-  const safeExplanation = sanitizeAiOutput(explanation);
+  const safeImpactText = sanitizeAiOutput(impactText);
 
   // Save so this exact checkId never needs an AI call again — this write
   // only happens on a cache MISS, so the database only ever grows to the
   // number of distinct checkIds that have ever been seen (~10 max).
-  await AiExplanationCache.create({ checkId: check.checkId, explanation: safeExplanation });
+  await AiExplanationCache.create({ checkId: check.checkId, explanation: safeImpactText });
 
-  return safeExplanation;
+  return safeImpactText;
 }
 
 /**
  * Builds the full AI explanation section for a scan's findings.
- * findings: scored findings for THIS scan (see scanner/scoring.js)
+ * findings: scored findings for THIS scan — already carry a `remediation`
+ *   field attached deterministically in scanner/scoring.js, no AI involved
+ *   in that part at all.
  * summary: { score, severityCounts }
  */
 export default async function generateExplanation(findings, summary) {
@@ -86,24 +94,25 @@ export default async function generateExplanation(findings, summary) {
   }
 
   // De-duplicate: if this one scan found the same checkId twice (e.g. two
-  // cookies both missing HttpOnly), we only need to explain that TYPE once
-  // and reuse it for both findings below — another small token saving.
-  // explanationByCheckId ends up as e.g. { "missing-csp": "...", "cookie-missing-httponly": "..." }
-  const explanationByCheckId = {};
+  // cookies both missing HttpOnly), we only need the AI's impact statement
+  // for that TYPE once and reuse it for both findings below — another
+  // small token saving, on top of the cache itself.
+  // impactByCheckId ends up as e.g. { "missing-csp": "...", "cookie-missing-httponly": "..." }
+  const impactByCheckId = {};
   for (const finding of findings) {
-    if (!explanationByCheckId[finding.checkId]) {
-      explanationByCheckId[finding.checkId] = await explainOneCheck(finding);
+    if (!impactByCheckId[finding.checkId]) {
+      impactByCheckId[finding.checkId] = await explainOneCheck(finding);
     }
   }
 
-  return buildReport(findings, summary, explanationByCheckId);
+  return buildReport(findings, summary, impactByCheckId);
 }
 
 // Plain string formatting — NO AI involved here at all. The AI's only job
-// (via explainOneCheck above) is producing the per-checkId explanation
-// text; grouping findings by severity and assembling the final markdown
-// report is ordinary, deterministic code.
-function buildReport(findings, summary, explanationByCheckId) {
+// (via explainOneCheck above) is producing the per-checkId IMPACT text;
+// everything else — grouping by severity, and pulling in each finding's
+// deterministic `remediation` field — is ordinary, hand-written code.
+function buildReport(findings, summary, impactByCheckId) {
   // Bucket every finding by its severity so the report can show CRITICAL
   // issues before LOW ones, regardless of the order checks ran in.
   const bySeverity = { critical: [], high: [], medium: [], low: [] };
@@ -125,9 +134,15 @@ function buildReport(findings, summary, explanationByCheckId) {
 
     markdown += `### ${severity.toUpperCase()} (${group.length})\n`;
     for (const finding of group) {
-      // Look up this finding's cached/fresh explanation by its checkId —
-      // every finding in `group` with the same checkId shares one entry.
-      markdown += `- **${finding.title}** (${finding.owasp})\n  ${explanationByCheckId[finding.checkId]}\n`;
+      // Three distinct pieces of information, from three distinct
+      // sources, laid out separately so nothing is repeated twice:
+      //   - finding.title / finding.owasp -> our own deterministic checks
+      //   - impactByCheckId[...]          -> the AI's "why it matters"
+      //   - finding.remediation           -> our own deterministic fix table
+      markdown +=
+        `- **${finding.title}** (${finding.owasp})\n` +
+        `  *Impact:* ${impactByCheckId[finding.checkId]}\n` +
+        `  *Recommended fix:* ${finding.remediation}\n`;
     }
     markdown += "\n";
   }

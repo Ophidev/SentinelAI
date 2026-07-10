@@ -1,4 +1,5 @@
 import { mapToOwasp } from "./owaspMap.js";
+import { getRemediation } from "./remediationMap.js";
 
 // How much each severity level costs, out of a starting score of 100.
 // These numbers are a judgment call, not a standard — documented here so
@@ -28,6 +29,10 @@ export function scoreFindings(findings) {
     return {
       ...finding,
       owasp: mapToOwasp(finding.checkId),
+      // Attached here, deterministically, from our own lookup table — every
+      // finding always has a concrete fix available even if the AI layer
+      // (ai/index.js) is slow, rate-limited, or fails entirely.
+      remediation: getRemediation(finding.checkId),
     };
   });
 
