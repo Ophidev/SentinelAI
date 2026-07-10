@@ -1,90 +1,87 @@
 # SentinelAI — Low Level Design (LLD)
 
-Version: 1.0 — 2026-07-10
+Version: 2.0 — 2026-07-10 (updated to reflect the AS-BUILT system)
 Companion to `HLD.md`. This document is implementation-level: schemas, endpoints, folder
-structure, sequence flows, and DevOps config.
+structure, and sequence flows, matching the actual codebase.
 
 ---
 
-## 1. Folder Structure (target state)
+## 1. Folder Structure (as built)
 
 ```
 server/
+  server.js
   src/
     app.js
-    server.js
     config/
       db.js
-      env.js                 // centralizes process.env reads + validation
     middleware/
-      authMiddleware.js       // existing
-      errorHandler.js         // new — central error -> JSON response
-      rateLimiter.js           // new — protects /scans
+      authMiddleware.js         // JWT verification, sets req.user
+      scanRateLimiter.js         // rate-limits POST /projects/:id/scans only
     models/
-      User.js                 // existing
-      Project.js               // new
-      Scan.js                   // new
+      User.js
+      Project.js
+      Scan.js                    // findings embed owasp + remediation per item
+      AiExplanationCache.js       // checkId -> cached AI impact text (~10 rows max)
     controllers/
-      authController.js        // existing
-      projectController.js     // new
-      scanController.js         // new
-      reportController.js       // new
+      authController.js
+      projectController.js
+      scanController.js
+      dashboardController.js
     routes/
-      authRoutes.js             // existing
-      projectRoutes.js          // new
-      scanRoutes.js              // new
-      reportRoutes.js            // new
-    scanner/                    // pure logic, no Express/DB imports
+      authRoutes.js
+      projectRoutes.js
+      scanRoutes.js
+      dashboardRoutes.js
+    scanner/                       // pure logic, no Express/DB imports
       runScan.js
       checks/
         httpHeaders.js
         https.js
         cookies.js
         cors.js
-        techDetection.js
-        robotsSitemap.js
-        directoryListing.js
-        jsSecretScan.js
-        certificate.js
-      owaspMap.js               // finding-type -> OWASP category + weight
-      scoring.js                 // findings -> score
+      owaspMap.js
+      remediationMap.js
+      scoring.js
     ai/
-      AIProvider.js              // interface
+      AIProvider.js
       providers/
-        ollama.js
-        openai.js
-      index.js                    // picks provider from env var
+        gemini.js
+        fallback.js
+      index.js                     // cache orchestration + report assembly
+      promptSanitizer.js
+      outputSanitizer.js
     utils/
-      generateToken.js            // existing
-      ssrfGuard.js                  // new — blocks scans of private/internal IPs
+      generateToken.js
+      ssrfGuard.js
 
 client/
   src/
-    app/
-      store.js                     // Redux Toolkit store (auth, activeProject only)
-      slices/
-        authSlice.js
-        activeProjectSlice.js
+    context/
+      AuthContext.jsx              // plain React Context, not Redux
     routes/
-      AppRouter.jsx                 // React Router config
+      AppRouter.jsx
       ProtectedRoute.jsx
     services/
-      api.js                        // existing, add interceptor
+      api.js                        // axios instance + JWT interceptor
       auth.api.js
       projects.api.js
       scans.api.js
+      dashboard.api.js
     pages/
-      Home, Login, Register, Dashboard, Projects, Scan, Report, History, Profile, Settings
-    components/
-      layout/ (Navbar, Sidebar)
-      ui/ (Button, Card, Badge, ScoreGauge) — plain Tailwind, no shadcn
+      Login/Login.jsx
+      Register/Register.jsx
+      Dashboard/Dashboard.jsx        // Projects list + account-wide stats
+      Scan/Scan.jsx                   // trigger scan, render findings + AI impact
+      History/History.jsx
+      Home, Profile, Report, Settings  // still unrouted 7-line stubs (not built)
 ```
 
 ---
 
-## 2. Database Schema
+## 2. Database Schema (as built)
 
-### 2.1 `User` (existing — no changes needed)
+### 2.1 `User`
 ```js
 {
   name: String,
@@ -96,198 +93,200 @@ client/
 }
 ```
 
-### 2.2 `Project` (new)
+### 2.2 `Project`
 ```js
 {
-  owner: ObjectId -> User,
-  name: String,               // "My Portfolio"
-  url: String,                 // "https://ayush.dev" — validated http/https, normalized
-  createdAt / updatedAt
-}
-```
-Index: `{ owner: 1 }` for "list my projects".
-
-### 2.3 `Scan` (new)
-```js
-{
-  project: ObjectId -> Project,
-  status: "pending" | "running" | "completed" | "failed",
-  startedAt: Date,
-  completedAt: Date,
-  findings: [
-    {
-      checkId: String,        // e.g. "missing-csp-header"
-      title: String,
-      description: String,
-      severity: "critical"|"high"|"medium"|"low"|"info",
-      owasp: String,           // e.g. "A05:2021 - Security Misconfiguration"
-      evidence: String,         // raw header/value that triggered it
-    }
-  ],
-  score: Number,               // 0-100
-  severityCounts: { critical: Number, high: Number, medium: Number, low: Number },
-  aiExplanation: String,        // markdown, generated once
-  error: String,                 // populated if status === "failed"
+  owner: ObjectId -> User,   // indexed, every query filters by this
+  name: String,
+  url: String,
   timestamps: true
 }
 ```
-Index: `{ project: 1, createdAt: -1 }` for history/trend queries.
+
+### 2.3 `Scan`
+```js
+{
+  project: ObjectId -> Project,   // indexed
+  status: "completed" | "failed",  // no "pending"/"running" — scans run synchronously
+  findings: [
+    {
+      checkId: String,
+      title: String,
+      description: String,
+      severity: "critical" | "high" | "medium" | "low" | "info",
+      owasp: String,               // from scanner/owaspMap.js
+      evidence: String,             // raw header/cookie value from the scanned site
+      remediation: String,           // from scanner/remediationMap.js — never AI-generated
+    }
+  ],
+  score: Number,                    // 0-100
+  severityCounts: { critical, high, medium, low, info },
+  aiExplanation: String,             // markdown: title/OWASP (ours) + impact (AI) + fix (ours)
+  error: String,                      // populated only when status === "failed"
+  timestamps: true
+}
+```
+
+### 2.4 `AiExplanationCache`
+```js
+{
+  checkId: String,   // unique — one row per issue TYPE, capped at ~10 rows total
+  explanation: String, // the AI's (or fallback's) impact-analysis text for this checkId
+  timestamps: true
+}
+```
 
 ---
 
-## 3. API Design
+## 3. API Design (as built)
 
-All routes under `/api`, JWT bearer auth via existing `protect` middleware unless noted.
+All routes under `/api`, JWT bearer auth via `authMiddleware.protect` unless noted.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| POST | `/auth/register` | public | existing |
-| POST | `/auth/login` | public | existing |
-| GET | `/auth/profile` | yes | existing |
+| POST | `/auth/register` | public | register a new user |
+| POST | `/auth/login` | public | login, returns JWT |
+| GET | `/auth/profile` | yes | current user |
 | GET | `/projects` | yes | list current user's projects |
 | POST | `/projects` | yes | create project `{name, url}` |
-| GET | `/projects/:id` | yes | get one project + its latest scan summary |
-| DELETE | `/projects/:id` | yes | delete project (and cascade its scans) |
-| POST | `/projects/:id/scans` | yes | trigger a new scan → returns `{scanId, status:"pending"}` |
-| GET | `/projects/:id/scans` | yes | list scans for a project (history) |
-| GET | `/scans/:id` | yes | poll scan status/result |
-| GET | `/scans/:id/report.pdf` | yes | generate & stream PDF |
-| GET | `/dashboard/summary` | yes | aggregate: totals, avg score, severity counts across all projects |
+| GET | `/projects/:id` | yes | get one project + its latest scan |
+| DELETE | `/projects/:id` | yes | delete project (cascades its scans) |
+| POST | `/projects/:projectId/scans` | yes, rate-limited | run a scan **synchronously**, returns the completed `Scan` |
+| GET | `/projects/:projectId/scans` | yes | list scans for a project (History page) |
+| GET | `/scans/:id` | yes | fetch one scan by id (ownership checked via its parent project) |
+| GET | `/dashboard/summary` | yes | aggregate: total projects, total scans, avg score, severity counts |
 
-Rate limit: `POST /projects/:id/scans` → max 5 requests / 10 min / user (prevents using SentinelAI
-as a scanning proxy against arbitrary targets).
+Not built: `/scans/:id/report.pdf` (PDF export), any polling-style "pending" scan status.
 
 ---
 
-## 4. Sequence: Trigger + Complete a Scan
+## 4. Sequence: Trigger a Scan (as built — synchronous)
 
 ```
-Client            Server(API)         Scanner(async job)        AI Engine        MongoDB
-  |  POST /scans      |                                                            |
-  |------------------->|  create Scan{pending} -------------------------------------->|
-  |<--- scanId ---------|
-  |                    |  fire-and-forget runScan(url)                              |
-  |                    |------------------------->|                                 |
-  |                    |                          | run 9 checks in parallel        |
-  |                    |                          | (Promise.allSettled)            |
-  |                    |<-------- findings[] ------|                                 |
-  |                    |  score(findings) -> score, owaspBuckets                     |
-  |                    |------------------------------------------------->|          |
-  |                    |                                    explain(findings,score) |
-  |                    |<---------------------------------- aiExplanation-|          |
-  |                    |  Scan.status = completed -----------------------------------> |
-  |  GET /scans/:id     |                                                            |
-  |------------------->|  read Scan --------------------------------------------------> |
-  |<---- result --------|
+Client                 Server (scanController)          Scanner            AI (ai/index.js)     MongoDB
+  |  POST /projects/:id/scans                                                                        |
+  |--------------------->|  confirm project.owner === req.user._id -------------------------------->  |
+  |                      |  runScan(project.url) -------->|                                          |
+  |                      |                                | SSRF guard (DNS resolve + reject)        |
+  |                      |                                | one fetch -> 4 checks in parallel        |
+  |                      |<------- findings[] -------------|                                          |
+  |                      |  scoreFindings(findings)                                                   |
+  |                      |    -> attach owasp + remediation, compute score                            |
+  |                      |  generateExplanation(findings, summary) ----------------------->|          |
+  |                      |                                   for each unique checkId:                |
+  |                      |                                     cache lookup ------------------------->|
+  |                      |                                     [HIT] reuse | [MISS] call Gemini,      |
+  |                      |                                       fallback on failure, sanitize, cache-->|
+  |                      |<---------------------------------- aiExplanation (markdown) ---|            |
+  |                      |  Scan.create({ status: "completed", ... }) ------------------------------->  |
+  |<-- full Scan JSON ----|                                                                             |
 ```
 
-Client polling strategy: poll every 3s while `status ∈ {pending, running}`, stop on
-`completed`/`failed`, max 60s timeout with a "still scanning, check back later" fallback.
+No polling — the client's `triggerScan()` call simply resolves once this whole chain completes
+(typically 0.5-2s on a cache hit, longer on a cache miss with a live Gemini call).
 
 ---
 
-## 5. Scanner Check Contract
+## 5. Scanner Check Contract (as built)
 
-Every file in `scanner/checks/` exports:
 ```js
+// Every file in scanner/checks/ exports this shape:
 export default async function check(url, context) {
-  // context = { headers, html, cookies } — fetched once in runScan.js and shared
-  // to avoid every check re-fetching the same page
+  // context = { headers, setCookieHeaders, finalUrl, status } — built ONCE in
+  // runScan.js from a single fetch, shared across all checks.
   return [ { checkId, title, description, severity, evidence } ]; // or []
 }
 ```
-`runScan.js` fetches the URL once (headers + body), builds `context`, then runs all checks
-against that shared context — not 9 separate HTTP requests to the target site.
+`runScan.js` fetches the URL once, builds `context`, runs all 4 checks via `Promise.allSettled`
+(one failing check doesn't kill the scan), flattens the results, then hands them to
+`scoreFindings()`.
 
-Checks to implement (mapped to spec's scanner list):
-- `httpHeaders.js` — missing CSP / X-Frame-Options / X-Content-Type-Options / HSTS
-- `https.js` — non-HTTPS URL, mixed content in HTML
-- `cookies.js` — missing `Secure`/`HttpOnly`/`SameSite` flags
-- `cors.js` — `Access-Control-Allow-Origin: *` combined with credentials
-- `techDetection.js` — server/framework fingerprinting via headers + meta tags (informational, not a vuln by itself)
-- `robotsSitemap.js` — presence + sensitive paths disclosed
-- `directoryListing.js` — check common paths (`/uploads/`, `/.git/`, `/backup/`) for open listing
-- `jsSecretScan.js` — regex scan of linked JS files for API-key-shaped strings
-- `certificate.js` — TLS cert expiry/validity (Node `tls` module)
+Implemented checks:
+- `httpHeaders.js` — missing `Content-Security-Policy` / `X-Frame-Options` /
+  `X-Content-Type-Options` / `Strict-Transport-Security`
+- `https.js` — target URL isn't `https://`
+- `cookies.js` — any `Set-Cookie` missing `Secure` / `HttpOnly` / `SameSite`
+- `cors.js` — `Access-Control-Allow-Origin: *` (flagged higher if combined with
+  `Access-Control-Allow-Credentials: true`)
+
+Not implemented (from the original spec): tech detection, robots.txt/sitemap analysis, directory
+listing detection, JS secret scanning, TLS certificate inspection.
 
 ---
 
-## 6. AI Engine Detail
+## 6. AI Engine Detail (as built — impact analysis + remediation split)
 
 ```js
-// ai/AIProvider.js
+// ai/AIProvider.js — the interface every provider implements
 export default class AIProvider {
-  async explain(findings, scoreSummary) { throw new Error("not implemented"); }
+  async explainCheck(check) { throw new Error("not implemented"); }
+  // check = { checkId, title, description, severity, owasp } — ONE issue type,
+  // never a whole scan's findings, and never per-scan evidence (see below).
 }
 ```
+
 ```js
-// ai/index.js
-import ollama from "./providers/ollama.js";
-import openai from "./providers/openai.js";
-const providers = { ollama, openai };
-export default providers[process.env.AI_PROVIDER || "ollama"];
-```
-Prompt template (fixed, not user-editable): pass findings as structured JSON + score, ask for
-markdown output with sections "Summary", "What this means", "How to fix it" per severity group.
-One call per scan — findings are batched, never one AI call per individual finding.
+// ai/index.js — orchestration (simplified)
+async function explainOneCheck(check) {
+  const cached = await AiExplanationCache.findOne({ checkId: check.checkId });
+  if (cached) return cached.explanation;             // cache HIT: zero AI calls
 
----
+  let text;
+  try { text = await geminiProvider.explainCheck(check); }
+  catch { text = await fallbackProvider.explainCheck(check); }
 
-## 7. Security Details
-
-- **SSRF guard** (`utils/ssrfGuard.js`): before scanning, resolve the URL's hostname and reject if
-  it resolves to a private/loopback/link-local range (10.x, 172.16-31.x, 192.168.x, 127.x, 169.254.x,
-  ::1). This is critical — without it, SentinelAI itself becomes an SSRF tool against internal
-  infrastructure.
-- **Rate limiting** on scan creation (see §3).
-- **Ownership check**: every `/projects/:id` and `/scans/:id` route confirms `project.owner === req.user.id`
-  before returning data — prevents scanning/reading other users' projects by guessing IDs.
-- **No arbitrary redirect following past N hops** in the scanner's fetch step (avoid being bounced
-  to an internal address after the SSRF check passes on the original URL).
-
----
-
-## 8. PDF Report Generation
-
-- Library: `pdfkit` or `puppeteer` (puppeteer is heavier — prefer `pdfkit` for a lightweight
-  server-side render given no complex charts needed initially).
-- `reportController.js` reads the completed `Scan`, renders a fixed template (score, severity
-  breakdown, findings table, AI explanation section), streams `application/pdf`.
-
----
-
-## 9. DevOps: Docker + Jenkins
-
-### 9.1 Dockerfiles
-```
-server/Dockerfile        node:20-alpine, npm ci --omit=dev, CMD ["node","server.js"]
-client/Dockerfile        multi-stage: node:20-alpine build -> nginx:alpine serve /dist
-docker-compose.yml        server + client + (optional local mongo for dev only; prod uses Atlas)
+  const safe = sanitizeAiOutput(text);
+  await AiExplanationCache.create({ checkId: check.checkId, explanation: safe });
+  return safe;
+}
 ```
 
-### 9.2 Jenkins Pipeline (`Jenkinsfile`)
-Stages:
-1. **Checkout**
-2. **Install** — `npm ci` in both `client/` and `server/`
-3. **Lint** — `npm run lint` (client eslint config already exists)
-4. **Test** — unit tests for `scanner/checks/*` (pure functions, easy to test with mocked fetch)
-5. **Build** — `docker build` for both images, tag with git SHA
-6. **Push** — push images to a registry (Docker Hub or GitHub Container Registry)
-7. **Deploy trigger** — curl Railway's deploy webhook (frontend deploy is separate via Vercel git integration)
+**What the AI prompt asks for** (`providers/gemini.js`): 1-2 sentences describing a *realistic
+attack scenario* for this specific issue — explicitly instructed NOT to repeat the technical
+description (already shown in the findings list) and NOT to suggest a fix (handled
+deterministically, see below). `title`/`description` pass through `promptSanitizer.js` first
+(defense-in-depth); `evidence` is never included at all, both because it's the one genuinely
+attacker-influenced field and because including it would break the checkId-based cache (evidence
+differs per scan; the cache assumes one reusable explanation per checkId).
 
-This mirrors the DevOps skills already listed on the developer's GitHub (Docker, Jenkins, CI/CD)
-rather than introducing new unfamiliar tooling.
+**What never touches the AI** (`scanner/remediationMap.js`, applied in `scoring.js` before the AI
+is even called): the exact fix for each checkId — e.g. *"Add the `HttpOnly` attribute to this
+cookie so client-side JavaScript cannot read its value."* Hand-written, reviewed, always
+identical for a given checkId, and always present even if Gemini and the fallback both somehow
+failed (they can't — the fallback never throws — but remediation doesn't even depend on that
+guarantee).
+
+**Final report assembly** (`buildReport()` in `ai/index.js`, no AI involved): for each finding,
+prints `title` + `owasp` (from the checks themselves), `*Impact:*` (the AI text from above), and
+`*Recommended fix:*` (`finding.remediation`, deterministic) — three distinct sources, laid out so
+nothing is ever repeated twice.
 
 ---
 
-## 10. What to Build First (suggested order)
+## 7. Security Details (as built)
 
-1. `Project` model + CRUD routes (small, unlocks everything else)
-2. `Scan` model + `scanner/` module with 2–3 checks (httpHeaders, https, cookies) — get the
-   pipeline working end-to-end before adding all 9 checks
-3. Scoring + OWASP mapping (pure functions, easy to unit test)
-4. Wire up React Router + Redux `auth` slice, connect Login/Register to real API
-5. Scan trigger + polling UI, Report page rendering real data
-6. AI Engine (single provider) — plug in last, once findings pipeline is proven deterministic
-7. PDF export, Dashboard aggregation, remaining checks
-8. Docker + Jenkins once the app has something worth deploying
+- **SSRF guard** (`utils/ssrfGuard.js`): DNS-resolves the scan target's hostname and rejects it if
+  any resolved IP falls in a private/loopback/link-local range (10.x, 172.16–31.x, 192.168.x,
+  127.x, 169.254.x, `::1`, `fc00::/7`). Resolves DNS rather than checking the hostname string
+  alone, specifically to defend against DNS rebinding (a domain that resolves to a private IP).
+- **Rate limiting**: `middleware/scanRateLimiter.js` on scan creation only (10 requests / 10 min
+  per IP) — not yet applied to login/register (see HLD §6).
+- **Ownership checks**: every project/scan lookup filters by `req.user._id`, and a scan is looked
+  up via its parent project's `owner` field — never a bare `Scan.findById` with no ownership check.
+- **AI guardrails** (`ai/promptSanitizer.js`, `ai/outputSanitizer.js`): OWASP Top 10 for LLMs
+  LLM01 (indirect prompt injection) and LLM02 (insecure output handling) — see HLD §2.5 for the
+  reasoning. Verified directly against adversarial input (an injection-phrase-laden string, and
+  an HTML/script-tag-laden string) during development.
+
+---
+
+## 8. Not Yet Built
+
+- PDF report export (`pdfkit`/`puppeteer`, `/scans/:id/report.pdf`)
+- Profile / Settings pages
+- Async scan queue + polling (`status: "pending"/"running"`) — scans are synchronous today
+- Docker (`server/Dockerfile`, `client/Dockerfile`) + Jenkins pipeline
+- Remaining 5 scanner checks (tech detection, robots.txt/sitemap, directory listing, JS secret
+  scanning, TLS certificate inspection)
+- "Chat with AI about a scan" (multi-turn, scoped to one scan's findings)
+- Login/register rate limiting
