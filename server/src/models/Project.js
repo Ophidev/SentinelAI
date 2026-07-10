@@ -23,6 +23,15 @@ const projectSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+
+    // Optional — a GitHub repo URL for this project's SOURCE code, separate
+    // from `url` (the deployed website). A project can have a website scan,
+    // a code scan, both, or neither — this is why it's not `required`.
+    repoUrl: {
+      type: String,
+      required: false,
+      trim: true,
+    },
   },
   {
     timestamps: true, // adds createdAt / updatedAt automatically

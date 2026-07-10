@@ -14,6 +14,12 @@ const OWASP_MAP = {
   "cookie-missing-samesite": "A01:2021 - Broken Access Control",
   "cors-wildcard-with-credentials": "A01:2021 - Broken Access Control",
   "cors-wildcard-origin": "A05:2021 - Security Misconfiguration",
+
+  // Code-scan checkIds (see server/src/codeScanner/) — same map, same
+  // function, reused unchanged for source-code findings.
+  "vulnerable-dependency": "A06:2021 - Vulnerable and Outdated Components",
+  "hardcoded-secret": "A07:2021 - Identification and Authentication Failures",
+  "exposed-env-file": "A05:2021 - Security Misconfiguration",
 };
 
 export function mapToOwasp(checkId) {

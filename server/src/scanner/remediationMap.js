@@ -33,6 +33,15 @@ const REMEDIATION_MAP = {
     "Replace `Access-Control-Allow-Origin: *` with an explicit allow-list of trusted origins — `*` combined with credentials is never safe.",
   "cors-wildcard-origin":
     "Restrict `Access-Control-Allow-Origin` to the specific origins that actually need access, instead of `*`.",
+
+  // Code-scan checkIds (see server/src/codeScanner/) — same table, same
+  // function (getRemediation), reused unchanged for source-code findings.
+  "vulnerable-dependency":
+    "Update the affected package to a patched version (check the advisory for the minimum safe version), then re-run `npm install` and commit the updated lockfile.",
+  "hardcoded-secret":
+    "Remove the hardcoded value from source control, rotate the credential immediately (assume it is already compromised once committed), and load it from an environment variable instead.",
+  "exposed-env-file":
+    "Remove the committed .env file from the repository, rotate every secret it contained, and add `.env` to `.gitignore` so it can never be committed again.",
 };
 
 // Same pattern as mapToOwasp() in owaspMap.js: look up by checkId, and fall

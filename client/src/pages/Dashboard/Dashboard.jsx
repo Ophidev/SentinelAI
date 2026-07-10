@@ -19,6 +19,7 @@ function Dashboard() {
   const [summary, setSummary] = useState(null);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
+  const [repoUrl, setRepoUrl] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const { user, logout } = useAuth();
@@ -43,11 +44,12 @@ function Dashboard() {
     e.preventDefault();
     setError("");
     try {
-      const data = await createProject(name, url);
+      const data = await createProject(name, url, repoUrl);
       // Prepend the new project instead of re-fetching the whole list.
       setProjects((prev) => [data.project, ...prev]);
       setName("");
       setUrl("");
+      setRepoUrl("");
     } catch (err) {
       setError(err.response?.data?.message || "Failed to create project");
     }
@@ -84,41 +86,50 @@ function Dashboard() {
           <h2 className="mb-3 text-sm font-semibold text-zinc-400">Add a project</h2>
           <Card>
             <CardBody>
-              <form onSubmit={handleCreate} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <form onSubmit={handleCreate} className="space-y-3">
                 {error && (
-                  <p className="w-full rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400 sm:hidden">
+                  <p className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
                     {error}
                   </p>
                 )}
-                <div className="flex-1">
-                  <Label htmlFor="name">Name</Label>
-                  <Input
-                    id="name"
-                    type="text"
-                    placeholder="My Portfolio"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <div className="flex-1">
+                    <Label htmlFor="name">Name</Label>
+                    <Input
+                      id="name"
+                      type="text"
+                      placeholder="My Portfolio"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Label htmlFor="url">Website URL</Label>
+                    <Input
+                      id="url"
+                      type="url"
+                      placeholder="https://example.com"
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <Label htmlFor="url">Website URL</Label>
-                  <Input
-                    id="url"
-                    type="url"
-                    placeholder="https://example.com"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    required
-                  />
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="flex-1">
+                    <Label htmlFor="repoUrl">GitHub repo URL (optional — enables code scanning)</Label>
+                    <Input
+                      id="repoUrl"
+                      type="url"
+                      placeholder="https://github.com/owner/repo"
+                      value={repoUrl}
+                      onChange={(e) => setRepoUrl(e.target.value)}
+                    />
+                  </div>
+                  <Button type="submit">Add project</Button>
                 </div>
-                <Button type="submit">Add project</Button>
               </form>
-              {error && (
-                <p className="mt-3 hidden rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400 sm:block">
-                  {error}
-                </p>
-              )}
             </CardBody>
           </Card>
         </div>
@@ -143,6 +154,9 @@ function Dashboard() {
                     <div>
                       <p className="font-medium">{project.name}</p>
                       <p className="text-sm text-zinc-500">{project.url}</p>
+                      {project.repoUrl && (
+                        <p className="mt-0.5 text-xs text-zinc-600">📦 Code scanning enabled</p>
+                      )}
                     </div>
                     <span className="text-zinc-600">→</span>
                   </CardBody>

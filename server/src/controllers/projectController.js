@@ -5,7 +5,7 @@ import Scan from "../models/Scan.js";
 // req.user is set by the authMiddleware "protect" function after verifying the JWT.
 export const createProject = async (req, res) => {
   try {
-    const { name, url } = req.body;
+    const { name, url, repoUrl } = req.body;
 
     if (!name || !url) {
       return res.status(400).json({ success: false, message: "name and url are required" });
@@ -20,7 +20,13 @@ export const createProject = async (req, res) => {
       return res.status(400).json({ success: false, message: "url must be a valid URL" });
     }
 
-    const project = await Project.create({ owner: req.user._id, name, url });
+    // repoUrl is optional — a project only gets a "code scan" option once
+    // this is set (see scanController.createCodeScan).
+    if (repoUrl && !/^https:\/\/github\.com\/[^/]+\/[^/]+/.test(repoUrl)) {
+      return res.status(400).json({ success: false, message: "repoUrl must look like https://github.com/<owner>/<repo>" });
+    }
+
+    const project = await Project.create({ owner: req.user._id, name, url, repoUrl });
 
     res.status(201).json({ success: true, project });
   } catch (error) {
