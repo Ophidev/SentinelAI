@@ -14,6 +14,10 @@ const findingSchema = new mongoose.Schema(
     // Concrete fix text, looked up deterministically in scanner/remediationMap.js
     // — never AI-generated, so it's always correct and always present.
     remediation: String,
+    // AI-generated "what could an attacker actually do with this" text —
+    // see ai/index.js attachImpact(). Deliberately doesn't repeat title/
+    // description/remediation, which all live elsewhere on this same object.
+    impact: String,
   },
   { _id: false } // findings are embedded, they don't need their own id
 );

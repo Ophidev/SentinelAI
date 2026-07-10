@@ -80,72 +80,42 @@ async function explainOneCheck(check) {
 }
 
 /**
- * Builds the full AI explanation section for a scan's findings.
- * findings: scored findings for THIS scan — already carry a `remediation`
- *   field attached deterministically in scanner/scoring.js, no AI involved
- *   in that part at all.
- * summary: { score, severityCounts }
+ * Takes this scan's findings (already carrying `owasp` + `remediation` from
+ * scoring.js) and returns a NEW array where every finding also carries
+ * `impact` — the AI's answer to "what could an attacker do with this."
+ *
+ * Attaching impact directly onto each finding (instead of building one big
+ * separate markdown blob) means the frontend can render ONE card per
+ * finding with everything it needs — title, OWASP, severity, impact, and
+ * fix — instead of that same information appearing twice: once per-finding
+ * and once again in a giant AI-generated summary underneath.
  */
-export default async function generateExplanation(findings, summary) {
-  // A clean scan has nothing to explain — skip the whole AI/cache pipeline
-  // entirely and return a short, hand-written summary instead.
-  if (findings.length === 0) {
-    return `## Summary\nNo issues were found. Score: **${summary.score}/100**.`;
-  }
-
+export async function attachImpact(findings) {
   // De-duplicate: if this one scan found the same checkId twice (e.g. two
   // cookies both missing HttpOnly), we only need the AI's impact statement
   // for that TYPE once and reuse it for both findings below — another
   // small token saving, on top of the cache itself.
-  // impactByCheckId ends up as e.g. { "missing-csp": "...", "cookie-missing-httponly": "..." }
   const impactByCheckId = {};
+
+  const result = [];
   for (const finding of findings) {
     if (!impactByCheckId[finding.checkId]) {
       impactByCheckId[finding.checkId] = await explainOneCheck(finding);
     }
+    result.push({ ...finding, impact: impactByCheckId[finding.checkId] });
   }
-
-  return buildReport(findings, summary, impactByCheckId);
+  return result;
 }
 
-// Plain string formatting — NO AI involved here at all. The AI's only job
-// (via explainOneCheck above) is producing the per-checkId IMPACT text;
-// everything else — grouping by severity, and pulling in each finding's
-// deterministic `remediation` field — is ordinary, hand-written code.
-function buildReport(findings, summary, impactByCheckId) {
-  // Bucket every finding by its severity so the report can show CRITICAL
-  // issues before LOW ones, regardless of the order checks ran in.
-  const bySeverity = { critical: [], high: [], medium: [], low: [] };
-  for (const finding of findings) {
-    // If a finding somehow has an unrecognized severity, fall back to the
-    // "low" bucket rather than throwing — a display bug should never be
-    // able to break the whole report.
-    (bySeverity[finding.severity] || bySeverity.low).push(finding);
+/**
+ * A short, ONE-line summary for the top of the scan result — score and
+ * count only. Deliberately does not repeat any individual finding's
+ * details, since those now live entirely on the findings themselves
+ * (see attachImpact above). No AI involved — this is plain string formatting.
+ */
+export function buildSummary(findingCount, score) {
+  if (findingCount === 0) {
+    return `No issues were found. Score: ${score}/100.`;
   }
-
-  let markdown = `## Summary\nThis scan found **${findings.length} issue(s)**. Score: **${summary.score}/100**.\n\n`;
-
-  // Object.entries() preserves the insertion order of bySeverity above, so
-  // this loop naturally prints critical -> high -> medium -> low.
-  for (const [severity, group] of Object.entries(bySeverity)) {
-    // Skip severities with zero findings instead of printing an empty
-    // "### HIGH (0)" section.
-    if (group.length === 0) continue;
-
-    markdown += `### ${severity.toUpperCase()} (${group.length})\n`;
-    for (const finding of group) {
-      // Three distinct pieces of information, from three distinct
-      // sources, laid out separately so nothing is repeated twice:
-      //   - finding.title / finding.owasp -> our own deterministic checks
-      //   - impactByCheckId[...]          -> the AI's "why it matters"
-      //   - finding.remediation           -> our own deterministic fix table
-      markdown +=
-        `- **${finding.title}** (${finding.owasp})\n` +
-        `  *Impact:* ${impactByCheckId[finding.checkId]}\n` +
-        `  *Recommended fix:* ${finding.remediation}\n`;
-    }
-    markdown += "\n";
-  }
-
-  return markdown;
+  return `This scan found ${findingCount} issue(s). Score: ${score}/100.`;
 }

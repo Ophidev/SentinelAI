@@ -3,6 +3,11 @@ import { Link } from "react-router-dom";
 import { listProjects, createProject } from "../../services/projects.api";
 import { getDashboardSummary } from "../../services/dashboard.api";
 import { useAuth } from "../../context/AuthContext";
+import Header from "../../components/layout/Header";
+import { Card, CardBody } from "../../components/ui/Card";
+import Input from "../../components/ui/Input";
+import Label from "../../components/ui/Label";
+import Button from "../../components/ui/Button";
 
 // This page doubles as the "Projects" list AND the account-wide dashboard
 // (stats row at the top) — the user's home base after login. Kept as one
@@ -49,80 +54,119 @@ function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 p-8">
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Welcome, {user?.name}</h1>
-          <button onClick={logout} className="text-sm text-gray-400 hover:text-white">
-            Logout
-          </button>
-        </div>
+    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      <Header
+        right={
+          <>
+            <span className="text-sm text-zinc-500">{user?.name}</span>
+            <Button variant="ghost" size="sm" onClick={logout}>
+              Logout
+            </Button>
+          </>
+        }
+      />
 
+      <main className="mx-auto max-w-5xl space-y-8 px-4 py-8">
         {summary && (
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatTile label="Projects" value={summary.totalProjects} />
             <StatTile label="Scans" value={summary.totalScans} />
-            <StatTile label="Avg Score" value={summary.averageScore ?? "-"} />
+            <StatTile label="Avg Score" value={summary.averageScore ?? "—"} />
             <StatTile
-              label="High/Critical"
+              label="High / Critical"
               value={summary.severityCounts.critical + summary.severityCounts.high}
+              accent={summary.severityCounts.critical + summary.severityCounts.high > 0}
             />
           </div>
         )}
 
-        <form onSubmit={handleCreate} className="bg-gray-900 p-4 rounded-lg space-y-3">
-          <h2 className="font-semibold">Add a project to scan</h2>
-          {error && <p className="text-red-400 text-sm">{error}</p>}
-          <input
-            type="text"
-            placeholder="Project name (e.g. My Portfolio)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            className="w-full px-3 py-2 rounded bg-gray-800 border border-gray-700"
-          />
-          <input
-            type="url"
-            placeholder="https://example.com"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            required
-            className="w-full px-3 py-2 rounded bg-gray-800 border border-gray-700"
-          />
-          <button type="submit" className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700">
-            Add Project
-          </button>
-        </form>
-
-        <div className="space-y-2">
-          <h2 className="font-semibold">Your Projects</h2>
-          {loading && <p className="text-gray-400">Loading...</p>}
-          {!loading && projects.length === 0 && (
-            <p className="text-gray-400">No projects yet — add one above to run your first scan.</p>
-          )}
-          {projects.map((project) => (
-            <Link
-              key={project._id}
-              to={`/projects/${project._id}/scan`}
-              className="block bg-gray-900 hover:bg-gray-800 p-4 rounded-lg"
-            >
-              <p className="font-medium">{project.name}</p>
-              <p className="text-sm text-gray-400">{project.url}</p>
-            </Link>
-          ))}
+        <div>
+          <h2 className="mb-3 text-sm font-semibold text-zinc-400">Add a project</h2>
+          <Card>
+            <CardBody>
+              <form onSubmit={handleCreate} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                {error && (
+                  <p className="w-full rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400 sm:hidden">
+                    {error}
+                  </p>
+                )}
+                <div className="flex-1">
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    type="text"
+                    placeholder="My Portfolio"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="flex-1">
+                  <Label htmlFor="url">Website URL</Label>
+                  <Input
+                    id="url"
+                    type="url"
+                    placeholder="https://example.com"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    required
+                  />
+                </div>
+                <Button type="submit">Add project</Button>
+              </form>
+              {error && (
+                <p className="mt-3 hidden rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400 sm:block">
+                  {error}
+                </p>
+              )}
+            </CardBody>
+          </Card>
         </div>
-      </div>
+
+        <div>
+          <h2 className="mb-3 text-sm font-semibold text-zinc-400">Your projects</h2>
+
+          {loading && <p className="text-sm text-zinc-500">Loading...</p>}
+          {!loading && projects.length === 0 && (
+            <Card>
+              <CardBody className="text-center text-sm text-zinc-500">
+                No projects yet — add one above to run your first scan.
+              </CardBody>
+            </Card>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {projects.map((project) => (
+              <Link key={project._id} to={`/projects/${project._id}/scan`}>
+                <Card className="transition-colors hover:border-zinc-700 hover:bg-zinc-900">
+                  <CardBody className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{project.name}</p>
+                      <p className="text-sm text-zinc-500">{project.url}</p>
+                    </div>
+                    <span className="text-zinc-600">→</span>
+                  </CardBody>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </main>
     </div>
   );
 }
 
 // Small reusable stat box — kept in this file since it's only used here.
-function StatTile({ label, value }) {
+// `accent` highlights the value in a warning color when it represents
+// something that needs attention (e.g. a non-zero High/Critical count).
+function StatTile({ label, value, accent = false }) {
   return (
-    <div className="bg-gray-900 p-3 rounded-lg text-center">
-      <p className="text-2xl font-bold">{value}</p>
-      <p className="text-xs text-gray-400">{label}</p>
-    </div>
+    <Card>
+      <CardBody>
+        <p className={`text-2xl font-semibold ${accent ? "text-red-400" : "text-zinc-100"}`}>{value}</p>
+        <p className="mt-0.5 text-xs text-zinc-500">{label}</p>
+      </CardBody>
+    </Card>
   );
 }
 
