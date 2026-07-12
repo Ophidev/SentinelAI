@@ -10,8 +10,18 @@ import morgan from "morgan";
 
 const app = express();
 
+const allowedOrigins = [
+  process.env.DEV_FRONTEND_URL,
+  process.env.PROD_FRONTEND_URL,
+].filter(Boolean);
+
 // Middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+);
 app.use(helmet());
 app.use(morgan("dev"));
 app.use(express.json());
