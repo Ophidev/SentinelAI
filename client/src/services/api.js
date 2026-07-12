@@ -5,7 +5,7 @@ import axios from "axios";
 // Note: kept as the server root (not /api) because App.jsx's health-check
 // ping hits "/" directly — individual service files add the "/api/..." prefix.
 const api = axios.create({
-  baseURL: "http://localhost:5000",
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:5000",
 });
 
 // Runs before every request. We store the JWT in localStorage after login
