@@ -4,8 +4,9 @@ import axios from "axios";
 // the base URL and attach the JWT to every outgoing request.
 // Note: kept as the server root (not /api) because App.jsx's health-check
 // ping hits "/" directly — individual service files add the "/api/..." prefix.
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:5000",
+  baseURL: API_BASE_URL,
 });
 
 // Runs before every request. We store the JWT in localStorage after login

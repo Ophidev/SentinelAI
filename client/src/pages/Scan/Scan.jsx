@@ -31,8 +31,6 @@ function scoreColor(score) {
 // The base URL the badge/API is served from — same origin services/api.js
 // already points at, just needed as a plain string here since a badge URL
 // is markdown text, not an axios call.
-const API_BASE = "http://localhost:5000";
-
 function Scan() {
   // :projectId comes from the route path /projects/:projectId/scan
   const { projectId } = useParams();
@@ -135,8 +133,6 @@ function Scan() {
             score most people embedding a README badge care about — the
             code score badge is available too (see BadgeSnippet), just
             secondary. */}
-        <BadgeSnippet projectId={projectId} label="Live security score" type="website" />
-        {hasRepo && <BadgeSnippet projectId={projectId} label="Code security score" type="code" />}
       </main>
     </div>
   );
@@ -220,37 +216,4 @@ function TabButton({ active, onClick, children }) {
 }
 
 // Shows the badge image itself PLUS the exact markdown to paste into a
-// README — copy-pasting the image alone isn't useful, someone embedding
-// this needs the markdown syntax, not just a preview of what it looks like.
-function BadgeSnippet({ projectId, label, type }) {
-  const badgeUrl = `${API_BASE}/api/projects/${projectId}/badge.svg${type === "code" ? "?type=code" : ""}`;
-  const markdown = `![${label}](${badgeUrl})`;
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(markdown);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-
-  return (
-    <Card>
-      <CardBody className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          {/* This badge URL needs no auth — see server/src/controllers/badgeController.js
-              for why that's a deliberate, safe design choice. */}
-          <img src={badgeUrl} alt={label} />
-          <div>
-            <p className="text-sm font-medium text-zinc-300">{label} badge</p>
-            <p className="text-xs text-zinc-500">Paste this into your project's README</p>
-          </div>
-        </div>
-        <Button variant="secondary" size="sm" onClick={handleCopy}>
-          {copied ? "Copied!" : "Copy markdown"}
-        </Button>
-      </CardBody>
-    </Card>
-  );
-}
-
 export default Scan;

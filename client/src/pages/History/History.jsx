@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { listScans } from "../../services/scans.api";
+import { listScans, triggerScan } from "../../services/scans.api";
 import Header from "../../components/layout/Header";
 import { Card, CardBody } from "../../components/ui/Card";
+import Button from "../../components/ui/Button";
 
 // Reuses the same score-color banding as Scan.jsx — kept as a small local
 // copy rather than a shared import, since this is the only other place a
@@ -20,14 +21,30 @@ function History() {
   const { projectId } = useParams();
   const [scans, setScans] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [rescanning, setRescanning] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const loadScans = useCallback(() =>
     listScans(projectId)
       .then((data) => setScans(data.scans))
-      .catch(() => setError("Failed to load scan history"))
-      .finally(() => setLoading(false));
-  }, [projectId]);
+      .catch(() => setError("Failed to load scan history")), [projectId]);
+
+  useEffect(() => {
+    loadScans().finally(() => setLoading(false));
+  }, [loadScans]);
+
+  const handleRescan = async () => {
+    setError("");
+    setRescanning(true);
+    try {
+      await triggerScan(projectId);
+      await loadScans();
+    } catch (err) {
+      setError(err.response?.data?.message || "Rescan failed");
+    } finally {
+      setRescanning(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -40,7 +57,12 @@ function History() {
       />
 
       <main className="mx-auto max-w-3xl space-y-4 px-4 py-8">
-        <h1 className="text-sm font-semibold text-zinc-400">Scan history</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-sm font-semibold text-zinc-400">Scan history</h1>
+          <Button size="sm" onClick={handleRescan} disabled={rescanning}>
+            {rescanning ? "Scanning..." : "Run scan again"}
+          </Button>
+        </div>
 
         {loading && <p className="text-sm text-zinc-500">Loading...</p>}
         {error && <p className="text-sm text-red-400">{error}</p>}

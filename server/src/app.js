@@ -2,7 +2,6 @@ import authRoutes from "./routes/authRoutes.js";
 import projectRoutes from "./routes/projectRoutes.js";
 import scanRoutes from "./routes/scanRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
-import badgeRoutes from "./routes/badgeRoutes.js";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -13,6 +12,7 @@ const app = express();
 const allowedOrigins = [
   process.env.DEV_FRONTEND_URL,
   process.env.PROD_FRONTEND_URL,
+
 ].filter(Boolean);
 
 // Middleware
@@ -32,7 +32,6 @@ app.use("/api/projects", projectRoutes);
 app.use("/api", scanRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 // Deliberately mounted with NO auth middleware — see badgeController.js.
-app.use("/api", badgeRoutes);
 
 // Health Check Route
 app.get("/", (req, res) => {
