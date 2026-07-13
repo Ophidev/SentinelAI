@@ -8,8 +8,6 @@
 - 📁 Multi-project tracking for websites and repositories
 - 🔎 Website and code scans for common security issues
 - 🧠 AI-powered impact explanations with guardrails and caching
-- 🏷️ Public security badge generation for each project
-- 📊 Dashboard and scan history for trend monitoring
 
 ## 🧰 Tech stack
 
